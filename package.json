@@ -46,6 +46,14 @@
   },
   "license": "MIT",
   "author": "lynn contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moponer/humanizer-stream.git"
+  },
+  "bugs": {
+    "url": "https://github.com/moponer/humanizer-stream/issues"
+  },
+  "homepage": "https://github.com/moponer/humanizer-stream#readme",
   "dependencies": {},
   "devDependencies": {}
 }
