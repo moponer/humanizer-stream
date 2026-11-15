@@ -1,0 +1,51 @@
+{
+  "name": "humanizer-stream",
+  "version": "0.1.0",
+  "description": "流式去 AI 味过滤器：在输出侧改写文本，不改提示词、不加 token、不动前缀缓存。可作为库 / CLI / HTTP 代理 / MCP server / harness 插件使用。",
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./engine": "./src/engine.js",
+    "./rules": "./src/rules/index.js",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "deslop": "./bin/deslop.js",
+    "humanizer-stream": "./bin/deslop.js"
+  },
+  "files": [
+    "src",
+    "bin",
+    "adapters",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/",
+    "lint": "node --check src/index.js",
+    "demo": "node bin/deslop.js samples/before-zh.md --report"
+  },
+  "keywords": [
+    "ai-slop",
+    "humanizer",
+    "de-ai",
+    "streaming",
+    "llm",
+    "prompt-cache",
+    "chinese",
+    "writing"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "author": "lynn contributors",
+  "dependencies": {},
+  "devDependencies": {}
+}

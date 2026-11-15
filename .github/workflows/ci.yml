@@ -1,0 +1,40 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["18", "20", "22"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: 单元测试
+        run: node --test test/
+      - name: CLI 冒烟
+        run: node bin/deslop.js samples/before-zh.md --report > /dev/null
+      - name: 规则文档未过期
+        run: |
+          node scripts/gen-rules-doc.mjs
+          git diff --exit-code docs/RULES.md || (echo "docs/RULES.md 与规则表不一致，请重新生成" && exit 1)
+
+  # 说明：这里故意不对本仓库的 README / RULES / SAFETY 跑 --check 门禁。
+  # 那几篇文档要举「AI 味长什么样」的例子，天然会命中规则——
+  # 拿体检分给它们打分只会得到噪音。真正的门禁应该放在内容仓库里，阈值按文体调。
+  self-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: 体检自身代码注释（应当接近 0）
+        run: node bin/deslop.js --check src/*.js --threshold 5

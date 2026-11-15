@@ -1,0 +1,15 @@
+{
+  "id": "humanizer-stream",
+  "name": "去 AI 味（输出过滤）",
+  "version": "0.1.0",
+  "kind": "text-filter",
+  "api": 1,
+  "entry": "index.js",
+  "description": "在输出侧过滤模型文本的 AI 味：删套话、化简公文腔、清装饰 emoji。不改提示词，不占上下文，不影响缓存命中率。",
+  "capabilities": ["filterText", "filterStream", "filterFile"],
+  "defaults": {
+    "profile": "chat",
+    "lang": "auto",
+    "emoji": "strip"
+  }
+}
