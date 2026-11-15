@@ -18,7 +18,7 @@ import { listRules } from "../src/rules/index.js";
 import { loadConfig, resolveOptions, profileForFile, defaultConfigFile } from "../src/config.js";
 import { grade } from "../src/score.js";
 
-const HELP = `deslop v0.1.0 —— 输出侧去 AI 味
+const HELP = `deslop v0.1.1 —— 输出侧去 AI 味
 
 用法
   deslop [文件…] [选项]              过滤后输出到 stdout（无文件时读 stdin）
@@ -133,7 +133,7 @@ async function main() {
   const opts = parseArgs(argv);
 
   if (opts.help) { process.stdout.write(HELP); return 0; }
-  if (opts.version) { process.stdout.write("0.1.0\n"); return 0; }
+  if (opts.version) { process.stdout.write("0.1.1\n"); return 0; }
 
   if (cmd === "rules") {
     const rows = listRules();

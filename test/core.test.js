@@ -157,3 +157,25 @@ test("CRLF 与 BOM 不影响行首规则（Windows 上的真实输入）", () =>
   assert.ok(!out.includes("值得注意"), out);
   assert.ok(out.includes("\r\n"), "CRLF 要原样保留，不能悄悄换成 LF");
 });
+
+test("规则不咬词中间的字：'随时联系我' 不能把 '随时联系我们' 啃成 '请们'", () => {
+  const src = "如需了解更多信息，请随时联系我们。";
+  assert.equal(run(src, { profile: "prose" }), src);
+});
+
+test("过滤后不留孤字/双标点/行首标点", () => {
+  const samples = [
+    "如需了解更多信息，请随时联系我们。",
+    "有问题欢迎随时联系我。",
+    "如果你还有其他问题，随时告诉我。",
+    "好的，我帮你梳理一下。值得注意的是，索引重建了。",
+    "综上所述，方案可行。未来可期，让我们拭目以待！",
+    "首先，我们做了压测；其次，我们分析了日志；最后，我们复核了结论。",
+  ];
+  for (const s of samples) {
+    const out = run(s, { profile: "all" });
+    assert.ok(!/请们|[，,。！？；;]们|[，,]{2,}|[。！？]{2,}/.test(out), `异常输出：${s} -> ${out}`);
+    assert.ok(!/^[，,。！？；;、]/.test(out.trim()), `行首残留标点：${s} -> ${out}`);
+    assert.ok(out.trim().length > 0, `整句被删空：${s}`);
+  }
+});

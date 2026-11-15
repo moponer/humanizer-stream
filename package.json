@@ -1,6 +1,6 @@
 {
   "name": "humanizer-stream",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "流式去 AI 味过滤器：在输出侧改写文本，不改提示词、不加 token、不动前缀缓存。可作为库 / CLI / HTTP 代理 / MCP server / harness 插件使用。",
   "type": "module",
   "main": "./src/index.js",

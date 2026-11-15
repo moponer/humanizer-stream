@@ -134,7 +134,7 @@ export function startMcp(defaults = {}) {
       ok(id, {
         protocolVersion: PROTOCOL,
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "humanizer-stream", version: "0.1.0" },
+        serverInfo: { name: "humanizer-stream", version: "0.1.1" },
       });
       return;
     }

@@ -17,7 +17,7 @@ import { createTextFilter } from "../../src/index.js";
 
 export const api = 1;
 export const name = "humanizer-stream";
-export const version = "0.1.0";
+export const version = "0.1.1";
 
 /** 宿主默认档位：对话输出用 chat（只删套话，不动承载语义的从句） */
 export const DEFAULT_OPTIONS = { profile: "chat", lang: "auto", emoji: "strip" };
