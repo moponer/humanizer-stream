@@ -18,7 +18,8 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - name: 单元测试
-        run: node --test test/
+        # 不要写 `node --test test/`：Node 22 会把目录当成单个测试文件，直接 MODULE_NOT_FOUND
+        run: npm test
       - name: CLI 冒烟
         run: node bin/deslop.js samples/before-zh.md --report > /dev/null
       - name: 规则文档未过期

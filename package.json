@@ -27,7 +27,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test",
     "lint": "node --check src/index.js",
     "demo": "node bin/deslop.js samples/before-zh.md --report"
   },
