@@ -2,40 +2,29 @@ name: ci
 
 on:
   push:
-    branches: [main]
   pull_request:
 
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false
       matrix:
-        node: ["18", "20", "22"]
+        node: [20, 22]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      - name: 单元测试
-        # 不要写 `node --test test/`：Node 22 会把目录当成单个测试文件，直接 MODULE_NOT_FOUND
+      - name: 规则与检测测试
         run: npm test
-      - name: CLI 冒烟
-        run: node bin/deslop.js samples/before-zh.md --report > /dev/null
-      - name: 规则文档未过期
+      - name: 规则文档不许与规则表脱节
         run: |
           node scripts/gen-rules-doc.mjs
-          git diff --exit-code docs/RULES.md || (echo "docs/RULES.md 与规则表不一致，请重新生成" && exit 1)
-
-  # 说明：这里故意不对本仓库的 README / RULES / SAFETY 跑 --check 门禁。
-  # 那几篇文档要举「AI 味长什么样」的例子，天然会命中规则——
-  # 拿体检分给它们打分只会得到噪音。真正的门禁应该放在内容仓库里，阈值按文体调。
-  self-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - name: 体检自身代码注释（应当接近 0）
-        run: node bin/deslop.js --check src/*.js --threshold 5
+          git diff --exit-code docs/RULES.md
+      - name: 样例门禁（AI 腔样本必须被判超阈值，重写样本必须干净）
+        run: |
+          if node bin/deslop.js check samples/before-zh.md --threshold 40; then
+            echo "AI 腔样例没有被判超阈值，检测器退化了"
+            exit 1
+          fi
+          node bin/deslop.js check samples/after-zh.md --threshold 15

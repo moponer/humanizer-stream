@@ -1,45 +1,39 @@
 {
   "name": "humanizer-stream",
-  "version": "0.1.1",
-  "description": "流式去 AI 味过滤器：在输出侧改写文本，不改提示词、不加 token、不动前缀缓存。可作为库 / CLI / HTTP 代理 / MCP server / harness 插件使用。",
+  "version": "0.2.0",
+  "description": "模型写作输出规则：把 AI 腔挡在生成之前。规则集 + 可注入的约束文本 + 体检器，零依赖。",
   "type": "module",
   "main": "./src/index.js",
-  "types": "./src/index.d.ts",
   "exports": {
-    ".": {
-      "types": "./src/index.d.ts",
-      "default": "./src/index.js"
-    },
-    "./engine": "./src/engine.js",
+    ".": "./src/index.js",
     "./rules": "./src/rules/index.js",
+    "./check": "./src/check.js",
     "./package.json": "./package.json"
   },
   "bin": {
-    "deslop": "./bin/deslop.js",
-    "humanizer-stream": "./bin/deslop.js"
+    "deslop": "./bin/deslop.js"
   },
   "files": [
     "src",
     "bin",
     "adapters",
     "docs",
+    "samples",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "test": "node --test",
-    "lint": "node --check src/index.js",
-    "demo": "node bin/deslop.js samples/before-zh.md --report"
+    "rules": "node bin/deslop.js rules --profile prose",
+    "inject": "node bin/deslop.js inject --profile chat"
   },
   "keywords": [
     "ai-slop",
-    "humanizer",
-    "de-ai",
-    "streaming",
+    "writing-rules",
+    "system-prompt",
+    "style-guide",
     "llm",
-    "prompt-cache",
-    "chinese",
-    "writing"
+    "chinese"
   ],
   "engines": {
     "node": ">=18"
@@ -53,7 +47,5 @@
   "bugs": {
     "url": "https://github.com/moponer/humanizer-stream/issues"
   },
-  "homepage": "https://github.com/moponer/humanizer-stream#readme",
-  "dependencies": {},
-  "devDependencies": {}
+  "homepage": "https://github.com/moponer/humanizer-stream#readme"
 }

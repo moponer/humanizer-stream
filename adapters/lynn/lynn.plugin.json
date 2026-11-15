@@ -1,15 +1,14 @@
 {
   "id": "humanizer-stream",
-  "name": "去 AI 味（输出过滤）",
-  "version": "0.1.1",
-  "kind": "text-filter",
-  "api": 1,
+  "name": "写作规则（约束模型别写 AI 腔）",
+  "version": "0.2.0",
+  "kind": "writing-rules",
+  "api": 2,
   "entry": "index.js",
-  "description": "在输出侧过滤模型文本的 AI 味：删套话、化简公文腔、清装饰 emoji。不改提示词，不占上下文，不影响缓存命中率。",
-  "capabilities": ["filterText", "filterStream", "filterFile"],
+  "description": "把一套写作约束注入系统提示词，让模型从第一句就不写套话、不升华、不堆黑话。不改输出、不做二次生成。",
+  "capabilities": ["writingRules", "checkText"],
   "defaults": {
     "profile": "chat",
-    "lang": "auto",
-    "emoji": "strip"
+    "lang": "zh"
   }
 }

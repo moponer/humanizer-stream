@@ -1,273 +1,205 @@
 #!/usr/bin/env node
-/**
- * deslop —— humanizer-stream 的命令行入口
- *
- * 常用：
- *   deslop article.md                 # 过滤后打到 stdout
- *   deslop -i docs/*.md               # 原地改写
- *   deslop --dir docs --write         # 递归改写整个目录
- *   deslop --check README.md          # 体检：AI 味超阈值就退出码 1（给 CI 用）
- *   deslop proxy --upstream https://api.deepseek.com --port 8787
- *   deslop mcp                        # 作为 MCP server 跑（stdio）
- */
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { composeRules, listRules } from "../src/compose.js";
+import { check, summarise } from "../src/check.js";
+import { extractStrings } from "../src/strings.js";
+import { ruleById, PROFILES } from "../src/rules/index.js";
 
-import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from "node:fs";
-import { extname, join, resolve, relative } from "node:path";
-import { createEngine, inspect } from "../src/engine.js";
-import { listRules } from "../src/rules/index.js";
-import { loadConfig, resolveOptions, profileForFile, defaultConfigFile } from "../src/config.js";
-import { grade } from "../src/score.js";
+const HELP = `deslop — 把 AI 腔挡在生成之前
 
-const HELP = `deslop v0.1.1 —— 输出侧去 AI 味
+用法：
+  deslop inject [--profile chat|prose|code|ui] [--lang zh|en] [--max 900]
+      打印可直接塞进系统提示词的写作规则。宿主的用法就这一条。
 
-用法
-  deslop [文件…] [选项]              过滤后输出到 stdout（无文件时读 stdin）
-  deslop -i <文件…>                  原地改写（写回同一文件）
-  deslop --dir <目录> [--write]      递归处理目录（--write 才落盘）
-  deslop --check <文件…>             只体检，不输出正文
-  deslop rules                       列出全部规则
-  deslop init                        在当前目录写 .deslop.json
-  deslop proxy --upstream <url>      起一个 LLM 反向代理，流式改写回复
-  deslop mcp                         以 MCP server 方式运行（stdio）
+  deslop check <文件或目录...> [--threshold 15] [--json] [--lang zh|en|auto] [--profile prose]
+      体检：数一数这段话里有多少处明确的 AI 写作特征。只报告，不改写。
+      超过阈值退出码 1，可以直接当 CI 门禁。
 
-选项
-  --profile <prose|chat|mild|code|all>   档位（默认 prose；.js/.py 等源码自动 code）
-  --lang <zh|en|auto>                    只跑对应语种的规则
-  --emoji <strip|keep>                   装饰性 emoji 处理（默认 strip）
-  --no-comments                          不处理代码块里的注释
-  --tables                               连表格单元格一起过滤
-  --unsafe                               允许删承载语义的从句（句尾升华）
-  --disable <ruleId,ruleId>              临时关掉若干规则
-  --report                               把体检报告打到 stderr
-  --json                                 报告以 JSON 打到 stderr
-  --threshold <n>                        --check 的分数阈值（默认 15）
-  --ext <md,txt>                         --dir 时限定扩展名
-  --dry-run                              和 --write 搭配：只报告不落盘
-  -h, --help / -v, --version
+  deslop check --strings <源码...>
+      源码模式：先从 TS/TSX/JS 里抠出给用户看的文案（字符串字面量与 JSX 文本），
+      再逐条体检。用来抽查界面文案。
+
+  deslop rules [--profile prose] [--lang zh] [--json]
+      列出规则（编号 / 分类 / 严重度 / 约束 / 反例 / 为什么）。
+
+  deslop explain <规则号>
+      一条规则的完整说明。
+
+  deslop install-lynn
+      装成 lynn 的宿主插件（~/.lynn/plugins/humanizer-stream/，或 $LYNN_HOME）。
 `;
 
-function parseArgs(argv) {
-  const opts = { files: [], _: [] };
-  const take = (i, name) => {
-    const v = argv[i + 1];
-    if (v === undefined || v.startsWith("--")) throw new Error(`${name} 需要一个值`);
-    return v;
-  };
-  for (let i = 0; i < argv.length; i += 1) {
-    const a = argv[i];
-    if (a === "--") {
-      opts.files.push(...argv.slice(i + 1));
-      break;
-    }
-    if (!a.startsWith("-")) {
-      opts.files.push(a);
-      continue;
-    }
-    switch (a) {
-      case "-h": case "--help": opts.help = true; break;
-      case "-v": case "--version": opts.version = true; break;
-      case "-i": case "--in-place": case "--write": opts.write = true; break;
-      case "--dir": opts.dir = take(i, a); i += 1; break;
-      case "--check": opts.check = true; break;
-      case "--report": opts.report = true; break;
-      case "--json": opts.json = true; break;
-      case "--dry-run": opts.dryRun = true; break;
-      case "--tables": opts.tables = true; break;
-      case "--no-comments": opts.comments = false; break;
-      case "--unsafe": opts.unsafe = true; break;
-      case "--profile": opts.profile = take(i, a); i += 1; break;
-      case "--lang": opts.lang = take(i, a); i += 1; break;
-      case "--emoji": opts.emoji = take(i, a); i += 1; break;
-      case "--disable": opts.disabled = take(i, a).split(",").map((s) => s.trim()).filter(Boolean); i += 1; break;
-      case "--threshold": opts.threshold = Number(take(i, a)); i += 1; break;
-      case "--ext": opts.ext = take(i, a).split(",").map((s) => s.trim()); i += 1; break;
-      case "--port": opts.port = Number(take(i, a)); i += 1; break;
-      case "--upstream": opts.upstream = take(i, a); i += 1; break;
-      case "--log": opts.log = take(i, a); i += 1; break;
-      default: throw new Error(`未知选项 ${a}`);
-    }
-  }
-  return opts;
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+/** 装成 lynn 插件：src/ 自包含复制过去，根上放适配器入口与清单 */
+function installLynn() {
+  const home = process.env.LYNN_HOME || path.join(os.homedir(), ".lynn");
+  const dest = path.join(home, "plugins", "humanizer-stream");
+  fs.rmSync(dest, { recursive: true, force: true });
+  fs.mkdirSync(dest, { recursive: true });
+  fs.cpSync(path.join(ROOT, "src"), path.join(dest, "src"), { recursive: true });
+  fs.copyFileSync(path.join(ROOT, "adapters", "lynn", "index.js"), path.join(dest, "index.js"));
+  fs.copyFileSync(path.join(ROOT, "adapters", "lynn", "lynn.plugin.json"), path.join(dest, "lynn.plugin.json"));
+  fs.copyFileSync(path.join(ROOT, "package.json"), path.join(dest, "package.json"));
+  process.stdout.write(`已装到 ${dest}\n重启 lynn 后在「设置 → 权限与安全 → 写作规则」里确认状态。\n`);
 }
 
-function readStdin() {
-  return new Promise((res, rej) => {
-    let data = "";
-    process.stdin.setEncoding("utf8");
-    process.stdin.on("data", (c) => { data += c; });
-    process.stdin.on("end", () => res(data));
-    process.stdin.on("error", rej);
-  });
+const FLAGS = new Set(["json", "strings"]);
+const args = process.argv.slice(2);
+const cmd = args[0] && !args[0].startsWith("-") ? args[0] : "help";
+
+const opt = { profile: undefined, lang: "zh", max: undefined, threshold: 15, json: false, strings: false };
+const paths = [];
+for (let i = cmd === "help" ? 0 : 1; i < args.length; i += 1) {
+  const a = args[i];
+  if (a === "--profile") opt.profile = args[++i];
+  else if (a === "--lang") opt.lang = args[++i] ?? "zh";
+  else if (a === "--max") opt.max = Number(args[++i]) || undefined;
+  else if (a === "--threshold") opt.threshold = Number(args[++i]) || 0;
+  else if (a.startsWith("--")) {
+    const key = a.slice(2);
+    if (FLAGS.has(key)) opt[key] = true;
+  } else paths.push(a);
 }
 
-function collectDir(dir, exts) {
+const TEXT_EXT = new Set([".md", ".txt", ".markdown", ".json"]);
+const CODE_EXT = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
+
+function walk(p) {
+  const st = fs.statSync(p);
+  if (st.isFile()) return [p];
   const out = [];
-  const walk = (d) => {
-    for (const ent of readdirSync(d, { withFileTypes: true })) {
-      if (ent.name === "node_modules" || ent.name.startsWith(".git")) continue;
-      const p = join(d, ent.name);
-      if (ent.isDirectory()) walk(p);
-      else if (!exts || exts.includes(extname(ent.name).replace(".", ""))) out.push(p);
-    }
-  };
-  walk(dir);
+  for (const name of fs.readdirSync(p)) {
+    if (name === "node_modules" || name === ".git" || name === "dist" || name === "build") continue;
+    out.push(...walk(path.join(p, name)));
+  }
   return out;
 }
 
-function emitReport(report, { json, file }) {
-  if (json) {
-    process.stderr.write(`${JSON.stringify({ file, ...report })}\n`);
+function printInject() {
+  const text = composeRules({ profile: opt.profile ?? "chat", locale: opt.lang, maxChars: opt.max });
+  if (!text) {
+    console.error("这个场景没有可用的规则（检查 --profile / --lang）。");
+    process.exit(2);
+  }
+  process.stdout.write(text + "\n");
+}
+
+function printRules() {
+  const rows = listRules({ profile: opt.profile ?? "prose", locale: opt.lang });
+  if (opt.json) {
+    process.stdout.write(JSON.stringify(rows, null, 2) + "\n");
     return;
   }
-  const head = `${file ? `${file} ` : ""}AI味 ${report.score}（${grade(report.score)}）· 命中 ${report.totalHits} 处 · ${report.chars} 字`;
-  process.stderr.write(`${head}\n`);
-  for (const r of report.byRule.slice(0, 12)) {
-    process.stderr.write(`  ${String(r.count).padStart(3)}  ${r.id}  ${r.label}\n`);
+  for (const r of rows) {
+    process.stdout.write(`${r.id}\t[${r.cat} sev${r.sev}]\t${r.rule}\n`);
+    if (r.bad) process.stdout.write(`\t反例：${r.bad}\n`);
   }
-  if (report.rhythmRun) process.stderr.write(`  ·  连续 ${report.rhythmRun} 句超过 40 字，节奏太匀\n`);
+  process.stdout.write(`\n共 ${rows.length} 条。\n`);
 }
 
-async function main() {
-  const argv = process.argv.slice(2);
-  const cmd = argv[0];
-  const opts = parseArgs(argv);
+function printExplain(id) {
+  const r = ruleById(id);
+  if (!r) {
+    console.error(`没有这条规则：${id}`);
+    process.exit(2);
+  }
+  process.stdout.write(`${r.id}\n分类：${r.cat}　严重度：${r.sev ?? 2}\n约束：${r.rule}\n反例：${r.bad ?? "（无）"}\n为什么：${r.why ?? "（未写）"}\n`);
+}
 
-  if (opts.help) { process.stdout.write(HELP); return 0; }
-  if (opts.version) { process.stdout.write("0.1.1\n"); return 0; }
-
-  if (cmd === "rules") {
-    const rows = listRules();
-    process.stdout.write(`${rows.length} 条规则\n\n`);
-    for (const r of rows) {
-      process.stdout.write(`${r.id.padEnd(22)} ${r.kind.padEnd(8)} ${r.cat.padEnd(11)} ${r.label}\n`);
+function collect() {
+  const files = [];
+  for (const p of paths) {
+    if (!fs.existsSync(p)) {
+      console.error(`找不到路径：${p}`);
+      process.exit(2);
     }
-    return 0;
+    files.push(...walk(p));
   }
+  return files;
+}
 
-  if (cmd === "init") {
-    const p = resolve(".deslop.json");
-    if (existsSync(p)) { process.stderr.write(".deslop.json 已存在，不覆盖\n"); return 1; }
-    writeFileSync(p, `${JSON.stringify(defaultConfigFile(), null, 2)}\n`, "utf8");
-    process.stdout.write(`已写入 ${p}\n`);
-    return 0;
+function printCheck() {
+  if (!paths.length) {
+    console.error("要给至少一个文件或目录。见 deslop --help。");
+    process.exit(2);
   }
+  const files = collect();
+  const profile = opt.profile ?? "prose";
+  const reports = [];
+  let failed = 0;
 
-  if (cmd === "install-lynn") {
-    const { cpSync, mkdirSync } = await import("node:fs");
-    const { homedir } = await import("node:os");
-    const { fileURLToPath } = await import("node:url");
-    const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
-    const dest = resolve(process.env.LYNN_PLUGIN_DIR ?? join(homedir(), ".lynn", "plugins", "humanizer-stream"));
-    mkdirSync(dest, { recursive: true });
-    cpSync(join(root, "src"), join(dest, "src"), { recursive: true });
-    cpSync(join(root, "adapters", "lynn", "lynn.plugin.json"), join(dest, "lynn.plugin.json"));
-    // 装进插件目录后，入口要多跳一层：../../src → ./src
-    const entry = readFileSync(join(root, "adapters", "lynn", "index.js"), "utf8")
-      .replace('"../../src/index.js"', '"./src/index.js"');
-    writeFileSync(join(dest, "index.js"), entry, "utf8");
-    process.stdout.write(`已安装到 ${dest}\n在 lynn 的设置 → 权限与安全 里打开「去 AI 味」即生效。\n`);
-    return 0;
-  }
-
-  if (cmd === "proxy") {
-    const { startProxy } = await import("../src/proxy.js");
-    return startProxy({
-      port: opts.port ?? 8787,
-      upstream: opts.upstream,
-      log: opts.log,
-      profile: opts.profile ?? "chat",
-      lang: opts.lang,
-      comments: opts.comments,
-    });
-  }
-
-  if (cmd === "mcp") {
-    const { startMcp } = await import("../src/mcp.js");
-    return startMcp({ profile: opts.profile ?? "prose", lang: opts.lang });
-  }
-
-  // 文件 / stdin
-  const cfg = loadConfig();
-  const threshold = Number.isFinite(opts.threshold) ? opts.threshold : (cfg.threshold ?? 15);
-
-  let targets = [...opts.files];
-  if (opts.dir) targets.push(...collectDir(resolve(opts.dir), opts.ext));
-
-  if (targets.length === 0) {
-    const text = await readStdin();
-    const base = resolveOptions(cfg, cliToOptions(opts));
-    const engine = createEngine(base);
-    const out = engine.push(text) + engine.end();
-    process.stdout.write(out.trim() || !text.trim() ? out : text);
-    if (opts.report || opts.json) emitReport(engine.report(), { json: opts.json });
-    return 0;
-  }
-
-  let worst = 0;
-  let failed = false;
-  for (const file of targets) {
-    const abs = resolve(file);
-    if (!existsSync(abs) || !statSync(abs).isFile()) {
-      process.stderr.write(`跳过（不是文件）：${file}\n`);
+  for (const file of files) {
+    const ext = path.extname(file).toLowerCase();
+    if (!opt.strings && !TEXT_EXT.has(ext)) continue;
+    if (opt.strings && !CODE_EXT.has(ext)) continue;
+    let src = "";
+    try {
+      src = fs.readFileSync(file, "utf8");
+    } catch {
       continue;
     }
-    const text = readFileSync(abs, "utf8");
-    const guess = profileForFile(abs);
-    const base = resolveOptions(
-      { ...cfg, ...guess },
-      cliToOptions(opts),
-    );
-
-    if (opts.check) {
-      const report = inspect(text, base);
-      worst = Math.max(worst, report.score);
-      emitReport(report, { json: opts.json, file: relative(process.cwd(), abs) });
-      if (report.score > threshold) failed = true;
-      continue;
-    }
-
-    const engine = createEngine(base);
-    const out = engine.push(text) + engine.end();
-    const final = out.trim() || !text.trim() ? out : text;
-    const report = engine.report();
-    worst = Math.max(worst, report.score);
-
-    if (opts.write) {
-      if (opts.dryRun) {
-        process.stderr.write(`[dry-run] ${file}\n`);
-      } else if (final !== text) {
-        writeFileSync(abs, final, "utf8");
-        process.stderr.write(`已改写 ${file}（命中 ${report.totalHits} 处）\n`);
+    if (opt.strings) {
+      for (const s of extractStrings(src, { file })) {
+        const r = check(s.text, { locale: opt.lang, profile: "ui", threshold: opt.threshold });
+        if (r.hits.length) reports.push({ file, line: s.line, text: s.text, ...r });
       }
     } else {
-      process.stdout.write(final);
+      const r = check(src, { locale: opt.lang, profile, threshold: opt.threshold });
+      if (r.hits.length) reports.push({ file, line: 1, text: "", ...r });
     }
-    if (opts.report || opts.json) emitReport(report, { json: opts.json, file });
   }
 
-  if (opts.check) {
-    process.stderr.write(failed ? `\n体检未过：最高 ${worst} > 阈值 ${threshold}\n` : `\n体检通过：最高 ${worst} ≤ 阈值 ${threshold}\n`);
-    return failed ? 1 : 0;
+  for (const r of reports) {
+    if (!r.pass) failed += 1;
   }
-  return 0;
+
+  if (opt.json) {
+    process.stdout.write(JSON.stringify({ threshold: opt.threshold, files: reports.length, failed, reports }, null, 2) + "\n");
+  } else {
+    for (const r of reports) {
+      const where = r.text ? `${r.file}:${r.line}` : r.file;
+      process.stdout.write(`${r.pass ? "·" : "✗"} ${where}  ${summarise(r)}\n`);
+      for (const h of r.hits.slice(0, 6)) {
+        process.stdout.write(`    ${h.id}  ${h.excerpt}\n`);
+      }
+      if (r.text) process.stdout.write(`    原文：${r.text.slice(0, 80)}\n`);
+    }
+    const worst = reports.filter((r) => !r.pass).length;
+    process.stdout.write(`\n体检 ${reports.length} 段，超阈值 ${worst} 段（阈值 ${opt.threshold}）。\n`);
+  }
+  process.exit(failed > 0 ? 1 : 0);
 }
 
-function cliToOptions(opts) {
-  const out = {};
-  if (opts.profile) out.profile = opts.profile;
-  if (opts.lang) out.lang = opts.lang;
-  if (opts.emoji) out.emoji = opts.emoji;
-  if (opts.comments === false) out.comments = false;
-  if (opts.tables) out.tables = true;
-  if (opts.unsafe) out.unsafe = true;
-  if (opts.disabled) out.disabled = opts.disabled;
-  return out;
-}
-
-main().then(
-  (code) => process.exit(code ?? 0),
-  (err) => {
-    process.stderr.write(`deslop: ${err?.message ?? err}\n`);
+switch (cmd) {
+  case "inject":
+    printInject();
+    break;
+  case "rules":
+    printRules();
+    break;
+  case "explain":
+    printExplain(args[1] ?? "");
+    break;
+  case "check":
+    printCheck();
+    break;
+  case "install-lynn":
+    installLynn();
+    break;
+  case "help":
+  case "--help":
+  case "-h":
+    process.stdout.write(HELP);
+    break;
+  case "profiles":
+    for (const [k, v] of Object.entries(PROFILES)) process.stdout.write(`${k}\t${v.label}\t${v.cats.join(",") || "（专属规则）"}\n`);
+    break;
+  default:
+    console.error(`未知命令：${cmd}\n`);
+    process.stdout.write(HELP);
     process.exit(2);
-  },
-);
+}

@@ -1,32 +1,24 @@
 /**
- * lynn 宿主适配器（文本过滤器插件）。
+ * lynn 宿主适配器（写作规则插件）。
  *
- * 宿主契约（PLUGIN-CONTRACT.md §3）：
- *   export const api = 1
- *   export function createFilter(options) -> { text(s), stream() }
+ * 宿主契约（api = 2）：
+ *   export const api = 2
+ *   export function writingRules({ profile, locale, maxChars }) -> string
+ *   export function check(text, opts) -> 体检结果（可选，仅界面诊断用）
  *
- * lynn 侧只做一件事：把模型给的文本在**展示前**过一遍本过滤器。
- * 它不参与提示词、不参与上下文、不参与 token 记账——所以开关这个插件
- * 不会改变上下文长度，也不会打穿前缀缓存。
+ * 宿主拿 writingRules() 的结果拼进**系统提示词一次**。注意三件事：
+ *  1. 同一入参必须返回同一字符串——拼进系统提示词的东西一旦抖动，前缀缓存全废；
+ *  2. 这是「约束模型怎么写」，不是「事后改模型的话」；宿主的落盘与上下文都别再改写；
+ *  3. 插件缺失或抛错时宿主当作没装，静默回落到无规则。
  *
- * 安装：`deslop install-lynn` 会把 src/ 一起复制到 ~/.lynn/plugins/humanizer-stream/
- * 这样插件目录是自包含的，不依赖你 clone 在哪。
+ * 安装：把本目录的 index.js 与仓库的 src/ 一起复制到 ~/.lynn/plugins/humanizer-stream/
+ * （`deslop install-lynn` 就是干这个的）。
  */
 
-import { createTextFilter } from "../../src/index.js";
+import { writingRules, writingRulesCost, profileForFile, check, api, name } from "./src/index.js";
 
-export const api = 1;
-export const name = "humanizer-stream";
-export const version = "0.1.1";
+export { api, name, writingRules, writingRulesCost, profileForFile, check };
 
-/** 宿主默认档位：对话输出用 chat（只删套话，不动承载语义的从句） */
-export const DEFAULT_OPTIONS = { profile: "chat", lang: "auto", emoji: "strip" };
+export const version = "0.2.0";
 
-/**
- * @param {object} [options] 宿主可以传 { profile, disabled, emoji }
- */
-export function createFilter(options = {}) {
-  return createTextFilter({ ...DEFAULT_OPTIONS, ...options });
-}
-
-export default { api, name, version, createFilter };
+export default { api, name, version, writingRules, writingRulesCost, profileForFile, check };
