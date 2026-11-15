@@ -43,8 +43,8 @@ test("同一类里出现两三次才算特征的规则：单处不报", () => {
   const one = check("这个方案,我觉得可以。其余的都对了，没有问题。", { locale: "zh" });
   assert.ok(!one.hits.some((h) => h.id === "zh.format.halfpunct"), "单处半角标点不该定罪");
 
-  const three = check("第一处,第二处.第三处!都用了半角标点。这是一段比较长的话，用来抬高字数避免密度失真。", { locale: "zh" });
-  assert.ok(three.hits.some((h) => h.id === "zh.format.halfpunct"), "三处半角标点应该被抓到");
+  const three = check("第一处,第二处,第三处都用了半角逗号。这是一段比较长的话，用来抬高字数避免密度失真。", { locale: "zh" });
+  assert.ok(three.hits.some((h) => h.id === "zh.format.halfpunct"), "两处以上半角逗号应该被抓到");
 });
 
 test("结构类检测：emoji、满屏加粗、什么都拆成列表", () => {

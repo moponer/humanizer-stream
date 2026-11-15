@@ -8,7 +8,7 @@
  * 不追求完备：漏掉几句比把代码当文案报一堆假阳性好。
  */
 
-const CODE_HINTS = /=>|function\s*\(|import\s|require\(|className=|console\.|process\.env|\/\/|\bpx\b|:\s*[A-Z][A-Za-z]+\[|\$\{/;
+const CODE_HINTS = /=>|function\s*\(|import\s|require\(|className=|console\.|process\.env|\/\/|\bpx\b|:\s*[A-Z][A-Za-z]+\[|\$\{|[;{}`]|\?:|\breturn\b|\bconst\b/;
 
 function unescape(s) {
   return s.replace(/\\(n|t|r|"|'|`|\\)/g, (m, c) => ({ n: "\n", t: "\t", r: "\r", '"': '"', "'": "'", "`": "`", "\\": "\\" })[c] ?? m);
@@ -54,9 +54,12 @@ export function extractStrings(source, { file = "", minChars = 4 } = {}) {
   const lit = /(["'`])((?:\\.|(?!\1)[^\\])*?)\1/g;
   for (const m of src.matchAll(lit)) push(m[2], m.index ?? 0);
 
-  // JSX 文本节点：>这是一句文案<
-  const jsx = />([^<>{}]+)</g;
-  for (const m of src.matchAll(jsx)) push(m[1], m.index ?? 0);
+  // JSX 文本节点：>这是一句文案<（只在 tsx/jsx 里成立；
+  // 在 .ts 里这个形状大多来自泛型尖括号，会把代码当文案）
+  if (/\.[jt]sx$/i.test(file)) {
+    const jsx = />([^<>{}]+)</g;
+    for (const m of src.matchAll(jsx)) push(m[1], m.index ?? 0);
+  }
 
   return out;
 }

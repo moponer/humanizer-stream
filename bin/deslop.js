@@ -144,7 +144,9 @@ function printCheck() {
     }
     if (opt.strings) {
       for (const s of extractStrings(src, { file })) {
-        const r = check(s.text, { locale: opt.lang, profile: "ui", threshold: opt.threshold });
+        // 界面文案也按「散文」那套特征查：ui 场景的规则只进提示词、不带检测正则，
+        // 拿它当筛子会漏掉「希望对你有帮助」这类残留
+        const r = check(s.text, { locale: opt.lang, profile: profile, threshold: opt.threshold });
         if (r.hits.length) reports.push({ file, line: s.line, text: s.text, ...r });
       }
     } else {
